@@ -91,10 +91,12 @@ COMMODITY_SPOT_TOKENS_BINANCE = {"PAXG", "XAUT"}
 
 
 BINANCE_SPOT_BASE = "https://data-api.binance.vision"  # unrestricted market-data mirror of api.binance.com
-# fapi.binance.com 451-blocks some cloud/datacenter IP ranges (incl. GitHub-hosted
-# runners); www.binance.com proxies the same futures API under /fapi and is not
-# subject to the same geo-block, so it's tried first with fapi.binance.com as fallback.
-BINANCE_FAPI_HOSTS = ["https://www.binance.com/fapi", "https://fapi.binance.com/fapi"]
+# fapi.binance.com 451-blocks GitHub Actions runner IPs (same restriction the
+# sibling alpha-screener project hit). www.binance.com/fapi hits the same block,
+# confirmed by testing, so it's kept only as a no-cost fallback in case that
+# ever changes; futures data degrades gracefully (see `errors` in data.json)
+# when both are blocked rather than failing the whole run.
+BINANCE_FAPI_HOSTS = ["https://fapi.binance.com/fapi", "https://www.binance.com/fapi"]
 
 
 def fapi_urls(path):
