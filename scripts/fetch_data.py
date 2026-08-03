@@ -30,10 +30,26 @@ def http_json(url, method="GET", body=None, timeout=TIMEOUT):
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return json.loads(resp.read().decode())
+        except urllib.error.HTTPError as e:
+            last_err = e
+            if 400 <= e.code < 500:
+                break  # client error (incl. 451 geo-block) won't fix itself on retry
+            time.sleep(0.5 * (attempt + 1))
         except Exception as e:  # noqa: BLE001
             last_err = e
             time.sleep(0.5 * (attempt + 1))
-    raise RuntimeError(f"GET/POST {url} failed after {MAX_RETRIES} tries: {last_err}")
+    raise RuntimeError(f"GET/POST {url} failed: {last_err}")
+
+
+def http_json_any(urls, method="GET", body=None, timeout=TIMEOUT):
+    """Try each candidate URL (same logical request, different host/path) in order."""
+    last_err = None
+    for u in urls:
+        try:
+            return http_json(u, method=method, body=body, timeout=timeout)
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+    raise RuntimeError(f"all hosts failed for {urls[0]}: {last_err}")
 
 
 def fetch_many(urls, max_workers=25):
@@ -75,7 +91,14 @@ COMMODITY_SPOT_TOKENS_BINANCE = {"PAXG", "XAUT"}
 
 
 BINANCE_SPOT_BASE = "https://data-api.binance.vision"  # unrestricted market-data mirror of api.binance.com
-BINANCE_FAPI_BASE = "https://fapi.binance.com"
+# fapi.binance.com 451-blocks some cloud/datacenter IP ranges (incl. GitHub-hosted
+# runners); www.binance.com proxies the same futures API under /fapi and is not
+# subject to the same geo-block, so it's tried first with fapi.binance.com as fallback.
+BINANCE_FAPI_HOSTS = ["https://www.binance.com/fapi", "https://fapi.binance.com/fapi"]
+
+
+def fapi_urls(path):
+    return [f"{host}{path}" for host in BINANCE_FAPI_HOSTS]
 
 
 def fetch_binance():
@@ -83,9 +106,19 @@ def fetch_binance():
     errors = []
 
     fut_info = fut_tick = None
+    fapi_base = None
     try:
-        fut_info = http_json(f"{BINANCE_FAPI_BASE}/fapi/v1/exchangeInfo")
-        fut_tick = http_json(f"{BINANCE_FAPI_BASE}/fapi/v1/ticker/24hr")
+        fut_info = http_json_any(fapi_urls("/v1/exchangeInfo"))
+        # lock in whichever host just worked so subsequent calls don't re-probe
+        for host in BINANCE_FAPI_HOSTS:
+            try:
+                fut_tick = http_json(f"{host}/v1/ticker/24hr")
+                fapi_base = host
+                break
+            except Exception:  # noqa: BLE001
+                continue
+        if fut_tick is None:
+            raise RuntimeError("ticker/24hr failed on all hosts")
     except Exception as e:  # noqa: BLE001
         errors.append(f"futures fetch failed: {e}")
 
@@ -178,7 +211,7 @@ def fetch_binance():
                     }
                 )
 
-            oi_urls = [f"{BINANCE_FAPI_BASE}/fapi/v1/openInterest?symbol={r['symbol']}" for r in fut_rows]
+            oi_urls = [f"{fapi_base}/v1/openInterest?symbol={r['symbol']}" for r in fut_rows]
             oi_results = fetch_many(oi_urls, max_workers=30)
             for r, oi in zip(fut_rows, oi_results):
                 qty = f(oi.get("openInterest")) if oi else 0.0
