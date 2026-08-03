@@ -89,6 +89,30 @@ def pct(part, whole):
 # ---------------------------------------------------------------------------
 COMMODITY_SPOT_TOKENS_BINANCE = {"PAXG", "XAUT"}
 
+# Static snapshot of Binance USDⓈ-M TRADIFI_PERPETUAL base assets, captured from
+# /fapi/v1/exchangeInfo. bStocks spot classification cross-references this set
+# (root ticker without the trailing "B"), so it must not go empty just because
+# the futures endpoint is unreachable this run (see BINANCE_FAPI_HOSTS above) —
+# live exchangeInfo data, when reachable, is unioned on top to pick up new listings.
+STATIC_TRADIFI_COMMODITY_BASE = {"XAU", "XAG", "XPT", "XPD", "COPPER", "CL", "BZ", "NATGAS"}
+STATIC_TRADIFI_EQUITY_BASE = {
+    "TSLA", "INTC", "HOOD", "MSTR", "AMZN", "CRCL", "COIN", "PLTR", "EWY", "PAYP",
+    "META", "NVDA", "GOOGL", "QQQ", "SPY", "AAPL", "TSM", "MU", "SNDK", "MSFT",
+    "AVGO", "BABA", "AMD", "QCOM", "USAR", "LITE", "ORCL", "DIS", "UBER", "CSCO",
+    "HD", "SOXL", "MRVL", "CRWV", "WMT", "JPM", "V", "BRKB", "FLNC", "DRAM",
+    "RKLB", "CBRS", "SPCX", "NBIS", "WDC", "ARM", "BE", "COHR", "QNTX", "LLY",
+    "NVO", "BBX", "NOK", "EWT", "ASTS", "DELL", "IBM", "NOW", "CRM", "IREN",
+    "ONDS", "BX", "HPE", "AMAT", "CRWD", "CRDO", "AAOI", "IWM", "AXTI", "NFLX",
+    "COST", "URNM", "HIMS", "EBAY", "ZM", "DKNG", "RIVN", "GME", "XLE", "EWZ",
+    "BMNR", "UVXY", "ADBE", "GLW", "STXX", "ASML", "LRCX", "KLAC", "ALAB", "SMCI",
+    "CIEN", "KORU", "SONY", "MVLL", "TQQQ", "SQQQ", "STRC", "CAT", "TXN", "FLEX",
+    "TER", "TTWO", "KSTR", "BSP", "BOT", "WEN", "INTW", "SNXX", "XBI", "BNC",
+    "FWDI", "GEV", "VRT", "SNOW", "APP", "SKHY", "MUU", "SOXS", "TZA", "SHAZ",
+    "SOFI", "PANW", "PENG", "TMF", "TBT", "BITO", "PYPL", "GS", "SMH", "EWJ",
+    "OPENAI", "ANTHROPIC", "SKHYNIX", "SAMSUNG", "HYUNDAI", "MINIMAX", "ZHIPU",
+    "HK0700", "HK1810", "TENCENT", "POPMART", "GIGADEV",
+}
+
 
 BINANCE_SPOT_BASE = "https://data-api.binance.vision"  # unrestricted market-data mirror of api.binance.com
 # fapi.binance.com 451-blocks GitHub Actions runner IPs (same restriction the
@@ -124,7 +148,8 @@ def fetch_binance():
     except Exception as e:  # noqa: BLE001
         errors.append(f"futures fetch failed: {e}")
 
-    tradifi_equity_base, tradifi_commodity_base = set(), set()
+    tradifi_equity_base = set(STATIC_TRADIFI_EQUITY_BASE)
+    tradifi_commodity_base = set(STATIC_TRADIFI_COMMODITY_BASE)
     fut_map = {}
     if fut_info:
         fut_map = {s["symbol"]: s for s in fut_info["symbols"]}
@@ -287,13 +312,16 @@ def fetch_okx():
         inst = swap_inst_map.get(t["instId"])
         if not inst or inst.get("settleCcy") != "USDT" or inst.get("state") != "live":
             continue
+        last = f(t.get("last"))
+        # For derivatives, volCcy24h is the base-currency quantity traded, not a
+        # quote-currency value (unlike SPOT) — multiply by price to get USD notional.
         swap_rows.append(
             {
                 "symbol": t["instId"],
                 "base": inst.get("instFamily", t["instId"]),
-                "volume_usd": f(t.get("volCcy24h")),
-                "price": f(t.get("last")),
-                "change_pct": pct(f(t.get("last")) - f(t.get("open24h")), f(t.get("open24h"))),
+                "volume_usd": f(t.get("volCcy24h")) * last,
+                "price": last,
+                "change_pct": pct(last - f(t.get("open24h")), f(t.get("open24h"))),
                 "class": cat_class(inst.get("instCategory")),
                 "oi_usd": oi_map.get(t["instId"], 0.0),
             }
