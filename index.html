@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RWA Screener — Tokenized Equity / Commodity Dashboard</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <h1>RWA Screener</h1>
+      <p class="sub">代币化股票 / 大宗商品 交易数据 — Binance · OKX · Coinbase · Hyperliquid</p>
+    </div>
+    <div class="meta">
+      <span id="updated-at" class="updated">加载中…</span>
+      <span id="errors-badge" class="errors-badge" hidden></span>
+    </div>
+  </div>
+  <nav class="tabs" id="exchange-tabs">
+    <button class="tab active" data-ex="all">全部交易所</button>
+    <button class="tab" data-ex="binance">Binance</button>
+    <button class="tab" data-ex="okx">OKX</button>
+    <button class="tab" data-ex="coinbase">Coinbase</button>
+    <button class="tab" data-ex="hyperliquid">Hyperliquid</button>
+  </nav>
+</header>
+
+<main id="app">
+  <p class="loading">正在加载数据…</p>
+</main>
+
+<footer class="page-footer">
+  <p>
+    数据每 20 分钟通过 GitHub Actions 从各交易所公开 API 抓取一次；现货/合约成交量按 USDT 计价对折算，
+    仅统计 USDⓈ-M / USDT 结算合约。equity / commodity 分类：Binance 与 OKX 使用交易所官方字段
+    (underlyingType / instCategory)；Coinbase 使用 International Exchange 的 underlying_type 字段；
+    Hyperliquid 无官方分类，按关键词规则人工归类 HIP-3 市场。
+    源码见 <a href="https://github.com/Badkido/rwa-screener" target="_blank" rel="noopener">GitHub</a>。
+  </p>
+</footer>
+
+<template id="tpl-stat-tile">
+  <div class="stat-tile">
+    <div class="stat-label"></div>
+    <div class="stat-value"></div>
+    <div class="stat-meter">
+      <div class="meter-track">
+        <div class="meter-seg meter-equity"></div>
+        <div class="meter-seg meter-commodity"></div>
+      </div>
+      <div class="meter-legend">
+        <span class="legend-item"><i class="dot dot-equity"></i>Equity <b class="v-equity"></b></span>
+        <span class="legend-item"><i class="dot dot-commodity"></i>Commodity <b class="v-commodity"></b></span>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>

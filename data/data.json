@@ -1,0 +1,142 @@
+{
+  "generated_at": "2026-08-03T08:00:00+00:00",
+  "exchanges": {
+    "binance": {
+      "spot": {
+        "total_volume_usd": 25000000000,
+        "equity_volume_usd": 45000000,
+        "commodity_volume_usd": 12000000,
+        "equity_pct": 0.18,
+        "commodity_pct": 0.05,
+        "equity_ranking": [
+          {"symbol": "TSLABUSDT", "base": "TSLAB", "volume_usd": 12000000, "price": 313.5, "change_pct": 1.2, "class": "equity"},
+          {"symbol": "NVDABUSDT", "base": "NVDAB", "volume_usd": 9000000, "price": 201.6, "change_pct": -0.5, "class": "equity"}
+        ],
+        "commodity_ranking": [
+          {"symbol": "PAXGUSDT", "base": "PAXG", "volume_usd": 8000000, "price": 4061.5, "change_pct": 0.3, "class": "commodity"},
+          {"symbol": "XAUTUSDT", "base": "XAUT", "volume_usd": 4000000, "price": 4060.1, "change_pct": 0.2, "class": "commodity"}
+        ],
+        "top100": [
+          {"symbol": "BTCUSDT", "base": "BTC", "volume_usd": 3200000000, "price": 62578.5, "change_pct": -1.1, "class": null},
+          {"symbol": "ETHUSDT", "base": "ETH", "volume_usd": 1800000000, "price": 3400.2, "change_pct": 0.8, "class": null}
+        ]
+      },
+      "futures": {
+        "total_volume_usd": 60000000000,
+        "equity_volume_usd": 900000000,
+        "commodity_volume_usd": 300000000,
+        "equity_pct": 1.5,
+        "commodity_pct": 0.5,
+        "equity_ranking": [
+          {"symbol": "TSLAUSDT", "base": "TSLA", "volume_usd": 100000000, "price": 313.6, "change_pct": 1.1, "class": "equity", "oi_usd": 50000000}
+        ],
+        "commodity_ranking": [
+          {"symbol": "XAUUSDT", "base": "XAU", "volume_usd": 80000000, "price": 4062.0, "change_pct": 0.4, "class": "commodity", "oi_usd": 40000000}
+        ],
+        "top100_oi": [
+          {"symbol": "BTCUSDT", "base": "BTC", "volume_usd": 5000000000, "price": 62578.5, "change_pct": -1.1, "class": null, "oi_usd": 2000000000}
+        ]
+      }
+    },
+    "okx": {
+      "spot": {
+        "total_volume_usd": 8000000000,
+        "equity_volume_usd": 20000000,
+        "commodity_volume_usd": 3000000,
+        "equity_pct": 0.25,
+        "commodity_pct": 0.04,
+        "equity_ranking": [
+          {"symbol": "XTSLA-USDT", "base": "XTSLA", "volume_usd": 5000000, "price": 313.4, "change_pct": 1.0, "class": "equity"}
+        ],
+        "commodity_ranking": [],
+        "top100": [
+          {"symbol": "BTC-USDT", "base": "BTC", "volume_usd": 900000000, "price": 62580.0, "change_pct": -1.0, "class": null}
+        ]
+      },
+      "futures": {
+        "total_volume_usd": 15000000000,
+        "equity_volume_usd": 200000000,
+        "commodity_volume_usd": 50000000,
+        "equity_pct": 1.3,
+        "commodity_pct": 0.3,
+        "equity_ranking": [
+          {"symbol": "TSLA-USDT-SWAP", "base": "TSLA-USDT", "volume_usd": 40000000, "price": 313.7, "change_pct": 0.9, "class": "equity", "oi_usd": 20000000}
+        ],
+        "commodity_ranking": [
+          {"symbol": "XAU-USDT-SWAP", "base": "XAU-USDT", "volume_usd": 30000000, "price": 4062.5, "change_pct": 0.3, "class": "commodity", "oi_usd": 15000000}
+        ],
+        "top100_oi": [
+          {"symbol": "BTC-USDT-SWAP", "base": "BTC-USDT", "volume_usd": 2000000000, "price": 62580.0, "change_pct": -1.0, "class": null, "oi_usd": 900000000}
+        ]
+      }
+    },
+    "coinbase": {
+      "spot": {
+        "total_volume_usd": 2500000000,
+        "equity_volume_usd": 0,
+        "commodity_volume_usd": 1000000,
+        "equity_pct": 0,
+        "commodity_pct": 0.04,
+        "equity_ranking": [],
+        "commodity_ranking": [
+          {"symbol": "PAXG-USD", "base": "PAXG", "volume_usd": 1000000, "price": 4061.0, "change_pct": 0.2, "class": "commodity"}
+        ],
+        "top100": [
+          {"symbol": "BTC-USD", "base": "BTC", "volume_usd": 400000000, "price": 62585.0, "change_pct": -1.2, "class": null}
+        ]
+      },
+      "futures": {
+        "total_volume_usd": 3000000000,
+        "equity_volume_usd": 60000000,
+        "commodity_volume_usd": 25000000,
+        "equity_pct": 2.0,
+        "commodity_pct": 0.8,
+        "equity_ranking": [
+          {"symbol": "NVDA-PERP", "base": "NVDA", "volume_usd": 449020, "price": 201.6, "change_pct": 0.4, "class": "equity", "oi_usd": 407000}
+        ],
+        "commodity_ranking": [
+          {"symbol": "GOLD-PERP", "base": "GOLD", "volume_usd": 834379, "price": 4061.9, "change_pct": 0.3, "class": "commodity", "oi_usd": 1900000}
+        ],
+        "top100_oi": [
+          {"symbol": "BTC-PERP", "base": "BTC", "volume_usd": 1837709153, "price": 62578.5, "change_pct": -1.1, "class": null, "oi_usd": 133900000}
+        ]
+      }
+    },
+    "hyperliquid": {
+      "spot": null,
+      "futures": {
+        "total_volume_usd": 5000000000,
+        "equity_volume_usd": 300000000,
+        "commodity_volume_usd": 80000000,
+        "equity_pct": 6.0,
+        "commodity_pct": 1.6,
+        "equity_ranking": [
+          {"symbol": "xyz:TSLA", "base": "xyz:TSLA", "volume_usd": 8875918, "price": 313.62, "change_pct": 0.6, "class": "equity", "oi_usd": 35000000}
+        ],
+        "commodity_ranking": [
+          {"symbol": "xyz:GOLD", "base": "xyz:GOLD", "volume_usd": 5000000, "price": 4062.0, "change_pct": 0.3, "class": "commodity", "oi_usd": 12000000}
+        ],
+        "top100_oi": [
+          {"symbol": "BTC", "base": "BTC", "volume_usd": 987289886, "price": 62634.0, "change_pct": -1.3, "class": null, "oi_usd": 2223000000}
+        ]
+      }
+    }
+  },
+  "aggregate": {
+    "spot": {
+      "total_volume_usd": 35500000000,
+      "equity_volume_usd": 65000000,
+      "commodity_volume_usd": 16000000,
+      "equity_pct": 0.18,
+      "commodity_pct": 0.05
+    },
+    "futures": {
+      "total_volume_usd": 83000000000,
+      "equity_volume_usd": 1460000000,
+      "commodity_volume_usd": 455000000,
+      "equity_pct": 1.76,
+      "commodity_pct": 0.55
+    }
+  },
+  "errors": []
+}
