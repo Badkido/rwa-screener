@@ -43,13 +43,13 @@ def http_json(url, method="GET", body=None, timeout=TIMEOUT):
 
 def http_json_any(urls, method="GET", body=None, timeout=TIMEOUT):
     """Try each candidate URL (same logical request, different host/path) in order."""
-    last_err = None
+    errs = []
     for u in urls:
         try:
             return http_json(u, method=method, body=body, timeout=timeout)
         except Exception as e:  # noqa: BLE001
-            last_err = e
-    raise RuntimeError(f"all hosts failed for {urls[0]}: {last_err}")
+            errs.append(f"{u} -> {e}")
+    raise RuntimeError("all hosts failed: " + " | ".join(errs))
 
 
 def fetch_many(urls, max_workers=25):
