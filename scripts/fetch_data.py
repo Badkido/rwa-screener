@@ -74,22 +74,31 @@ def pct(part, whole):
 COMMODITY_SPOT_TOKENS_BINANCE = {"PAXG", "XAUT"}
 
 
-def fetch_binance():
-    spot_info = http_json("https://api.binance.com/api/v3/exchangeInfo")
-    spot_tick = http_json("https://api.binance.com/api/v3/ticker/24hr")
-    fut_info = http_json("https://fapi.binance.com/fapi/v1/exchangeInfo")
-    fut_tick = http_json("https://fapi.binance.com/fapi/v1/ticker/24hr")
+BINANCE_SPOT_BASE = "https://data-api.binance.vision"  # unrestricted market-data mirror of api.binance.com
+BINANCE_FAPI_BASE = "https://fapi.binance.com"
 
-    spot_map = {s["symbol"]: s for s in spot_info["symbols"]}
-    fut_map = {s["symbol"]: s for s in fut_info["symbols"]}
+
+def fetch_binance():
+    result = {"spot": None, "futures": None}
+    errors = []
+
+    fut_info = fut_tick = None
+    try:
+        fut_info = http_json(f"{BINANCE_FAPI_BASE}/fapi/v1/exchangeInfo")
+        fut_tick = http_json(f"{BINANCE_FAPI_BASE}/fapi/v1/ticker/24hr")
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"futures fetch failed: {e}")
 
     tradifi_equity_base, tradifi_commodity_base = set(), set()
-    for s in fut_info["symbols"]:
-        if s.get("contractType") == "TRADIFI_PERPETUAL":
-            if s.get("underlyingType") == "COMMODITY":
-                tradifi_commodity_base.add(s["baseAsset"])
-            else:
-                tradifi_equity_base.add(s["baseAsset"])
+    fut_map = {}
+    if fut_info:
+        fut_map = {s["symbol"]: s for s in fut_info["symbols"]}
+        for s in fut_info["symbols"]:
+            if s.get("contractType") == "TRADIFI_PERPETUAL":
+                if s.get("underlyingType") == "COMMODITY":
+                    tradifi_commodity_base.add(s["baseAsset"])
+                else:
+                    tradifi_equity_base.add(s["baseAsset"])
 
     def classify_spot(base_asset):
         if base_asset in COMMODITY_SPOT_TOKENS_BINANCE:
@@ -103,65 +112,33 @@ def fetch_binance():
         return None
 
     # ---- Spot ----
-    spot_rows = []
-    for t in spot_tick:
-        sym = t["symbol"]
-        info = spot_map.get(sym)
-        if not info or info.get("quoteAsset") != "USDT" or info.get("status") != "TRADING":
-            continue
-        vol = f(t.get("quoteVolume"))
-        spot_rows.append(
-            {
-                "symbol": sym,
-                "base": info["baseAsset"],
-                "volume_usd": vol,
-                "price": f(t.get("lastPrice")),
-                "change_pct": f(t.get("priceChangePercent")),
-                "class": classify_spot(info["baseAsset"]),
-            }
-        )
+    try:
+        spot_info = http_json(f"{BINANCE_SPOT_BASE}/api/v3/exchangeInfo")
+        spot_tick = http_json(f"{BINANCE_SPOT_BASE}/api/v3/ticker/24hr")
+        spot_map = {s["symbol"]: s for s in spot_info["symbols"]}
 
-    spot_total = sum(r["volume_usd"] for r in spot_rows)
-    spot_equity = [r for r in spot_rows if r["class"] == "equity"]
-    spot_commodity = [r for r in spot_rows if r["class"] == "commodity"]
+        spot_rows = []
+        for t in spot_tick:
+            sym = t["symbol"]
+            info = spot_map.get(sym)
+            if not info or info.get("quoteAsset") != "USDT" or info.get("status") != "TRADING":
+                continue
+            spot_rows.append(
+                {
+                    "symbol": sym,
+                    "base": info["baseAsset"],
+                    "volume_usd": f(t.get("quoteVolume")),
+                    "price": f(t.get("lastPrice")),
+                    "change_pct": f(t.get("priceChangePercent")),
+                    "class": classify_spot(info["baseAsset"]),
+                }
+            )
 
-    # ---- Futures (USDⓈ-M only) ----
-    fut_rows = []
-    for t in fut_tick:
-        sym = t["symbol"]
-        info = fut_map.get(sym)
-        if not info or info.get("status") != "TRADING":
-            continue
-        if info.get("contractType") not in ("PERPETUAL", "TRADIFI_PERPETUAL"):
-            continue
-        if info.get("quoteAsset") != "USDT":
-            continue
-        cls = None
-        if info.get("contractType") == "TRADIFI_PERPETUAL":
-            cls = "commodity" if info.get("underlyingType") == "COMMODITY" else "equity"
-        fut_rows.append(
-            {
-                "symbol": sym,
-                "base": info["baseAsset"],
-                "volume_usd": f(t.get("quoteVolume")),
-                "price": f(t.get("lastPrice")),
-                "change_pct": f(t.get("priceChangePercent")),
-                "class": cls,
-            }
-        )
+        spot_total = sum(r["volume_usd"] for r in spot_rows)
+        spot_equity = [r for r in spot_rows if r["class"] == "equity"]
+        spot_commodity = [r for r in spot_rows if r["class"] == "commodity"]
 
-    oi_urls = [f"https://fapi.binance.com/fapi/v1/openInterest?symbol={r['symbol']}" for r in fut_rows]
-    oi_results = fetch_many(oi_urls, max_workers=30)
-    for r, oi in zip(fut_rows, oi_results):
-        qty = f(oi.get("openInterest")) if oi else 0.0
-        r["oi_usd"] = qty * r["price"]
-
-    fut_total = sum(r["volume_usd"] for r in fut_rows)
-    fut_equity = [r for r in fut_rows if r["class"] == "equity"]
-    fut_commodity = [r for r in fut_rows if r["class"] == "commodity"]
-
-    return {
-        "spot": {
+        result["spot"] = {
             "total_volume_usd": spot_total,
             "equity_volume_usd": sum(r["volume_usd"] for r in spot_equity),
             "commodity_volume_usd": sum(r["volume_usd"] for r in spot_commodity),
@@ -170,18 +147,63 @@ def fetch_binance():
             "equity_ranking": top(spot_equity, "volume_usd"),
             "commodity_ranking": top(spot_commodity, "volume_usd"),
             "top100": top(spot_rows, "volume_usd", 100),
-        },
-        "futures": {
-            "total_volume_usd": fut_total,
-            "equity_volume_usd": sum(r["volume_usd"] for r in fut_equity),
-            "commodity_volume_usd": sum(r["volume_usd"] for r in fut_commodity),
-            "equity_pct": pct(sum(r["volume_usd"] for r in fut_equity), fut_total),
-            "commodity_pct": pct(sum(r["volume_usd"] for r in fut_commodity), fut_total),
-            "equity_ranking": top(fut_equity, "volume_usd"),
-            "commodity_ranking": top(fut_commodity, "volume_usd"),
-            "top100_oi": top(fut_rows, "oi_usd", 100),
-        },
-    }
+        }
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"spot fetch failed: {e}")
+
+    # ---- Futures (USDⓈ-M only) ----
+    if fut_info and fut_tick:
+        try:
+            fut_rows = []
+            for t in fut_tick:
+                sym = t["symbol"]
+                info = fut_map.get(sym)
+                if not info or info.get("status") != "TRADING":
+                    continue
+                if info.get("contractType") not in ("PERPETUAL", "TRADIFI_PERPETUAL"):
+                    continue
+                if info.get("quoteAsset") != "USDT":
+                    continue
+                cls = None
+                if info.get("contractType") == "TRADIFI_PERPETUAL":
+                    cls = "commodity" if info.get("underlyingType") == "COMMODITY" else "equity"
+                fut_rows.append(
+                    {
+                        "symbol": sym,
+                        "base": info["baseAsset"],
+                        "volume_usd": f(t.get("quoteVolume")),
+                        "price": f(t.get("lastPrice")),
+                        "change_pct": f(t.get("priceChangePercent")),
+                        "class": cls,
+                    }
+                )
+
+            oi_urls = [f"{BINANCE_FAPI_BASE}/fapi/v1/openInterest?symbol={r['symbol']}" for r in fut_rows]
+            oi_results = fetch_many(oi_urls, max_workers=30)
+            for r, oi in zip(fut_rows, oi_results):
+                qty = f(oi.get("openInterest")) if oi else 0.0
+                r["oi_usd"] = qty * r["price"]
+
+            fut_total = sum(r["volume_usd"] for r in fut_rows)
+            fut_equity = [r for r in fut_rows if r["class"] == "equity"]
+            fut_commodity = [r for r in fut_rows if r["class"] == "commodity"]
+
+            result["futures"] = {
+                "total_volume_usd": fut_total,
+                "equity_volume_usd": sum(r["volume_usd"] for r in fut_equity),
+                "commodity_volume_usd": sum(r["volume_usd"] for r in fut_commodity),
+                "equity_pct": pct(sum(r["volume_usd"] for r in fut_equity), fut_total),
+                "commodity_pct": pct(sum(r["volume_usd"] for r in fut_commodity), fut_total),
+                "equity_ranking": top(fut_equity, "volume_usd"),
+                "commodity_ranking": top(fut_commodity, "volume_usd"),
+                "top100_oi": top(fut_rows, "oi_usd", 100),
+            }
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"futures classify failed: {e}")
+
+    if errors:
+        result["_errors"] = errors
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -476,6 +498,9 @@ def main():
         try:
             print(f"Fetching {name}...", file=sys.stderr)
             exchanges[name] = fn()
+            sub_errors = exchanges[name].pop("_errors", None)
+            if sub_errors:
+                errors.extend(f"{name}: {msg}" for msg in sub_errors)
         except Exception as e:  # noqa: BLE001
             errors.append(f"{name}: {e}")
             traceback.print_exc()
