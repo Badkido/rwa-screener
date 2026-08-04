@@ -24,3 +24,39 @@ python3 scripts/fetch_data.py
 ```
 
 会在 `data/data.json` 生成最新数据（需要能访问各交易所 API 的网络环境）。
+
+## Binance 合约(本机刷新)
+
+`fapi.binance.com` 对 GitHub Actions 的服务器 IP 返回 451(地域限制)，所以公开页面的自动抓取拿不到
+Binance 合约数据。`scripts/local_binance_futures_proxy.py` 是一个只监听 `localhost:8899` 的本地小
+服务，从运行它的电脑直连 Binance(不经过 GitHub 的服务器)，配合页面上的"刷新合约数据(本机)"按钮使用
+——**只在运行该服务的这台电脑上点按钮才有效**，其余数据不受影响。
+
+设为开机自启(macOS，一次性设置)：
+
+```bash
+mkdir -p ~/Library/Application\ Support/rwa-screener/scripts
+cp scripts/fetch_data.py scripts/local_binance_futures_proxy.py \
+   ~/Library/Application\ Support/rwa-screener/scripts/
+```
+
+将 `com.rwascreener.binanceproxy.plist` 放到 `~/Library/LaunchAgents/`，`ProgramArguments` 指向上面
+复制出去的 `local_binance_futures_proxy.py`(注意：不能指向 `~/Documents` 里的原始路径，macOS 的隐私保护
+会拒绝 launchd 启动的进程读取 `~/Documents`)，然后：
+
+```bash
+launchctl load -w ~/Library/LaunchAgents/com.rwascreener.binanceproxy.plist
+```
+
+卸载：
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.rwascreener.binanceproxy.plist
+rm ~/Library/LaunchAgents/com.rwascreener.binanceproxy.plist
+```
+
+或者不装开机自启，想用的时候手动跑一次也可以：
+
+```bash
+python3 scripts/local_binance_futures_proxy.py
+```

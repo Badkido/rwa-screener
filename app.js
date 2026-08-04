@@ -30,6 +30,61 @@ const fmtChange = (n) => {
 let DATA = null;
 let currentExchange = "all";
 
+const LOCAL_PROXY_URL = "http://localhost:8899/binance-futures";
+
+function recomputeAggregate(section) {
+  let total = 0,
+    equity = 0,
+    commodity = 0;
+  for (const ex of Object.keys(EXCHANGE_LABELS)) {
+    const sec = DATA.exchanges[ex] && DATA.exchanges[ex][section];
+    if (!sec) continue;
+    total += sec.total_volume_usd || 0;
+    equity += sec.equity_volume_usd || 0;
+    commodity += sec.commodity_volume_usd || 0;
+  }
+  DATA.aggregate[section] = {
+    total_volume_usd: total,
+    equity_volume_usd: equity,
+    commodity_volume_usd: commodity,
+    equity_pct: total ? Math.round((equity / total) * 10000) / 100 : 0,
+    commodity_pct: total ? Math.round((commodity / total) * 10000) / 100 : 0,
+  };
+}
+
+async function refreshBinanceFutures(statusEl) {
+  statusEl.textContent = "正在从本地服务拉取…";
+  statusEl.className = "refresh-status";
+  try {
+    const res = await fetch(LOCAL_PROXY_URL, { cache: "no-store" });
+    if (!res.ok) throw new Error("本地服务返回 " + res.status);
+    const data = await res.json();
+    DATA.exchanges.binance.futures = data;
+    recomputeAggregate("futures");
+    render();
+  } catch (err) {
+    statusEl.textContent =
+      "本地服务不可用 — 请确认后台代理正在运行 (点击查看说明)";
+    statusEl.className = "refresh-status refresh-error";
+    statusEl.title = String(err);
+  }
+}
+
+function binanceFuturesRefreshTile() {
+  const div = document.createElement("div");
+  div.className = "stat-tile";
+  div.innerHTML = `
+    <div class="stat-label">合约 24h 交易总量</div>
+    <div class="stat-value">—</div>
+    <button class="refresh-btn" type="button">刷新合约数据(本机)</button>
+    <div class="refresh-status"></div>
+  `;
+  const btn = div.querySelector(".refresh-btn");
+  const statusEl = div.querySelector(".refresh-status");
+  btn.addEventListener("click", () => refreshBinanceFutures(statusEl));
+  return div;
+}
+
 async function load() {
   const res = await fetch("data/data.json", { cache: "no-store" });
   if (!res.ok) throw new Error("data.json fetch failed: " + res.status);
@@ -165,7 +220,7 @@ function renderAll(app) {
     g.style.display = "grid";
     g.style.gap = "8px";
     g.appendChild(statTile("现货", spot));
-    g.appendChild(statTile("合约", fut));
+    g.appendChild(ex === "binance" && !fut ? binanceFuturesRefreshTile() : statTile("合约", fut));
     wrap.appendChild(g);
     perExGrid.appendChild(wrap);
   }
@@ -209,7 +264,9 @@ function renderExchange(app, ex) {
   const overview = document.createElement("div");
   overview.className = "stat-grid";
   overview.appendChild(statTile("现货 24h 交易总量", data.spot));
-  overview.appendChild(statTile("合约 24h 交易总量", data.futures));
+  overview.appendChild(
+    ex === "binance" && !data.futures ? binanceFuturesRefreshTile() : statTile("合约 24h 交易总量", data.futures)
+  );
   app.appendChild(section(label + " 总览", null, overview));
 
   if (data.spot) {

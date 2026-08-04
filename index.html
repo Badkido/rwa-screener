@@ -37,6 +37,9 @@
     仅统计 USDⓈ-M / USDT 结算合约。equity / commodity 分类：Binance 与 OKX 使用交易所官方字段
     (underlyingType / instCategory)；Coinbase 使用 International Exchange 的 underlying_type 字段；
     Hyperliquid 无官方分类，按关键词规则人工归类 HIP-3 市场。
+    Binance 合约 API 对 GitHub Actions 服务器返回 451(地域限制)，公开页面无法自动获取；
+    "刷新合约数据(本机)"按钮通过本机后台服务直连 Binance，仅在运行该服务的电脑上可用，
+    详见 <a href="https://github.com/Badkido/rwa-screener#binance-合约本机刷新" target="_blank" rel="noopener">README</a>。
     源码见 <a href="https://github.com/Badkido/rwa-screener" target="_blank" rel="noopener">GitHub</a>。
   </p>
 </footer>
