@@ -84,6 +84,20 @@ def pct(part, whole):
     return round(100 * part / whole, 2) if whole else 0.0
 
 
+def oi_stats(rows):
+    """Aggregate open-interest totals (and equity/commodity split) for a futures section."""
+    total = sum(r.get("oi_usd", 0) for r in rows)
+    equity = sum(r.get("oi_usd", 0) for r in rows if r.get("class") == "equity")
+    commodity = sum(r.get("oi_usd", 0) for r in rows if r.get("class") == "commodity")
+    return {
+        "total_oi_usd": total,
+        "equity_oi_usd": equity,
+        "commodity_oi_usd": commodity,
+        "equity_oi_pct": pct(equity, total),
+        "commodity_oi_pct": pct(commodity, total),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Binance
 # ---------------------------------------------------------------------------
@@ -257,6 +271,7 @@ def fetch_binance():
                 "equity_ranking": top(fut_equity, "volume_usd"),
                 "commodity_ranking": top(fut_commodity, "volume_usd"),
                 "top100_oi": top(fut_rows, "oi_usd", 100),
+                **oi_stats(fut_rows),
             }
         except Exception as e:  # noqa: BLE001
             errors.append(f"futures classify failed: {e}")
@@ -351,6 +366,7 @@ def fetch_okx():
             "equity_ranking": top(swap_equity, "volume_usd"),
             "commodity_ranking": top(swap_commodity, "volume_usd"),
             "top100_oi": top(swap_rows, "oi_usd", 100),
+            **oi_stats(swap_rows),
         },
     }
 
@@ -440,6 +456,7 @@ def fetch_coinbase():
             "equity_ranking": top(fut_equity, "volume_usd"),
             "commodity_ranking": top(fut_commodity, "volume_usd"),
             "top100_oi": top(fut_rows, "oi_usd", 100),
+            **oi_stats(fut_rows),
         },
     }
 
@@ -510,8 +527,43 @@ def fetch_hyperliquid():
     fut_equity = [r for r in all_rows if r["class"] == "equity"]
     fut_commodity = [r for r in all_rows if r["class"] == "commodity"]
 
+    # Hyperliquid does have a real spot market — just no tokenized equity/commodity
+    # products on it (unlike its HIP-3 perps), so this is a bare volume total with
+    # no equity/commodity split.
+    spot_section = None
+    try:
+        spot_meta, spot_ctxs = http_json(
+            "https://api.hyperliquid.xyz/info", method="POST", body={"type": "spotMetaAndAssetCtxs"}
+        )
+        spot_rows = []
+        for pair, ctx in zip(spot_meta["universe"], spot_ctxs):
+            mark = f(ctx.get("markPx"))
+            spot_rows.append(
+                {
+                    "symbol": pair["name"],
+                    "base": pair["name"],
+                    "volume_usd": f(ctx.get("dayNtlVlm")),
+                    "price": mark,
+                    "change_pct": pct(mark - f(ctx.get("prevDayPx")), f(ctx.get("prevDayPx"))),
+                    "class": None,
+                }
+            )
+        spot_total = sum(r["volume_usd"] for r in spot_rows)
+        spot_section = {
+            "total_volume_usd": spot_total,
+            "equity_volume_usd": 0.0,
+            "commodity_volume_usd": 0.0,
+            "equity_pct": 0.0,
+            "commodity_pct": 0.0,
+            "equity_ranking": [],
+            "commodity_ranking": [],
+            "top100": top(spot_rows, "volume_usd", 100),
+        }
+    except Exception as e:  # noqa: BLE001
+        print(f"[hyperliquid] spot fetch failed: {e}", file=sys.stderr)
+
     return {
-        "spot": None,  # Hyperliquid has no equity/commodity spot market
+        "spot": spot_section,
         "futures": {
             "total_volume_usd": fut_total,
             "equity_volume_usd": sum(r["volume_usd"] for r in fut_equity),
@@ -521,6 +573,7 @@ def fetch_hyperliquid():
             "equity_ranking": top(fut_equity, "volume_usd"),
             "commodity_ranking": top(fut_commodity, "volume_usd"),
             "top100_oi": top(all_rows, "oi_usd", 100),
+            **oi_stats(all_rows),
         },
     }
 
@@ -538,6 +591,7 @@ FETCHERS = {
 
 def build_aggregate(exchanges, section):
     total = equity = commodity = 0.0
+    oi_total = oi_equity = oi_commodity = 0.0
     for ex in exchanges.values():
         sec = ex.get(section)
         if not sec:
@@ -545,13 +599,27 @@ def build_aggregate(exchanges, section):
         total += sec.get("total_volume_usd", 0)
         equity += sec.get("equity_volume_usd", 0)
         commodity += sec.get("commodity_volume_usd", 0)
-    return {
+        oi_total += sec.get("total_oi_usd", 0)
+        oi_equity += sec.get("equity_oi_usd", 0)
+        oi_commodity += sec.get("commodity_oi_usd", 0)
+    result = {
         "total_volume_usd": total,
         "equity_volume_usd": equity,
         "commodity_volume_usd": commodity,
         "equity_pct": pct(equity, total),
         "commodity_pct": pct(commodity, total),
     }
+    if oi_total:
+        result.update(
+            {
+                "total_oi_usd": oi_total,
+                "equity_oi_usd": oi_equity,
+                "commodity_oi_usd": oi_commodity,
+                "equity_oi_pct": pct(oi_equity, oi_total),
+                "commodity_oi_pct": pct(oi_commodity, oi_total),
+            }
+        )
+    return result
 
 
 def main():

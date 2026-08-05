@@ -36,12 +36,18 @@ function recomputeAggregate(section) {
   let total = 0,
     equity = 0,
     commodity = 0;
+  let oiTotal = 0,
+    oiEquity = 0,
+    oiCommodity = 0;
   for (const ex of Object.keys(EXCHANGE_LABELS)) {
     const sec = DATA.exchanges[ex] && DATA.exchanges[ex][section];
     if (!sec) continue;
     total += sec.total_volume_usd || 0;
     equity += sec.equity_volume_usd || 0;
     commodity += sec.commodity_volume_usd || 0;
+    oiTotal += sec.total_oi_usd || 0;
+    oiEquity += sec.equity_oi_usd || 0;
+    oiCommodity += sec.commodity_oi_usd || 0;
   }
   DATA.aggregate[section] = {
     total_volume_usd: total,
@@ -49,6 +55,11 @@ function recomputeAggregate(section) {
     commodity_volume_usd: commodity,
     equity_pct: total ? Math.round((equity / total) * 10000) / 100 : 0,
     commodity_pct: total ? Math.round((commodity / total) * 10000) / 100 : 0,
+    total_oi_usd: oiTotal,
+    equity_oi_usd: oiEquity,
+    commodity_oi_usd: oiCommodity,
+    equity_oi_pct: oiTotal ? Math.round((oiEquity / oiTotal) * 10000) / 100 : 0,
+    commodity_oi_pct: oiTotal ? Math.round((oiCommodity / oiTotal) * 10000) / 100 : 0,
   };
 }
 
@@ -92,26 +103,41 @@ async function load() {
   render();
 }
 
-function statTile(label, section) {
+function statTile(label, section, keys = {}) {
+  const {
+    total = "total_volume_usd",
+    equity = "equity_volume_usd",
+    commodity = "commodity_volume_usd",
+    equityPct = "equity_pct",
+    commodityPct = "commodity_pct",
+  } = keys;
   const tpl = document.getElementById("tpl-stat-tile");
   const node = tpl.content.cloneNode(true);
   node.querySelector(".stat-label").textContent = label;
-  if (!section || !section.total_volume_usd) {
+  if (!section || !section[total]) {
     node.querySelector(".stat-value").textContent = "—";
     node.querySelector(".stat-meter").remove();
     return node;
   }
-  node.querySelector(".stat-value").textContent = fmtUsd(section.total_volume_usd);
-  const eqPct = section.equity_pct || 0;
-  const coPct = section.commodity_pct || 0;
+  node.querySelector(".stat-value").textContent = fmtUsd(section[total]);
+  const eqPct = section[equityPct] || 0;
+  const coPct = section[commodityPct] || 0;
   node.querySelector(".meter-equity").style.width = eqPct + "%";
   node.querySelector(".meter-commodity").style.width = coPct + "%";
   node.querySelector(".v-equity").textContent =
-    fmtUsd(section.equity_volume_usd) + " (" + fmtPct(eqPct) + ")";
+    fmtUsd(section[equity]) + " (" + fmtPct(eqPct) + ")";
   node.querySelector(".v-commodity").textContent =
-    fmtUsd(section.commodity_volume_usd) + " (" + fmtPct(coPct) + ")";
+    fmtUsd(section[commodity]) + " (" + fmtPct(coPct) + ")";
   return node;
 }
+
+const OI_KEYS = {
+  total: "total_oi_usd",
+  equity: "equity_oi_usd",
+  commodity: "commodity_oi_usd",
+  equityPct: "equity_oi_pct",
+  commodityPct: "commodity_oi_pct",
+};
 
 function rankingTable(rows, opts = {}) {
   const { showExchange = false, oi = false } = opts;
@@ -205,6 +231,7 @@ function renderAll(app) {
   overview.className = "stat-grid";
   overview.appendChild(statTile("现货 24h 交易总量 (全部交易所)", DATA.aggregate.spot));
   overview.appendChild(statTile("合约 24h 交易总量 (全部交易所)", DATA.aggregate.futures));
+  overview.appendChild(statTile("合约 Open Interest (全部交易所)", DATA.aggregate.futures, OI_KEYS));
   app.appendChild(
     section("总览", "四家交易所合计，仅统计 USDT 计价交易对", overview)
   );
@@ -220,7 +247,12 @@ function renderAll(app) {
     g.style.display = "grid";
     g.style.gap = "8px";
     g.appendChild(statTile("现货", spot));
-    g.appendChild(ex === "binance" && !fut ? binanceFuturesRefreshTile() : statTile("合约", fut));
+    if (ex === "binance" && !fut) {
+      g.appendChild(binanceFuturesRefreshTile());
+    } else {
+      g.appendChild(statTile("合约 24h 交易总量", fut));
+      g.appendChild(statTile("合约 Open Interest", fut, OI_KEYS));
+    }
     wrap.appendChild(g);
     perExGrid.appendChild(wrap);
   }
@@ -264,9 +296,12 @@ function renderExchange(app, ex) {
   const overview = document.createElement("div");
   overview.className = "stat-grid";
   overview.appendChild(statTile("现货 24h 交易总量", data.spot));
-  overview.appendChild(
-    ex === "binance" && !data.futures ? binanceFuturesRefreshTile() : statTile("合约 24h 交易总量", data.futures)
-  );
+  if (ex === "binance" && !data.futures) {
+    overview.appendChild(binanceFuturesRefreshTile());
+  } else {
+    overview.appendChild(statTile("合约 24h 交易总量", data.futures));
+    overview.appendChild(statTile("合约 Open Interest", data.futures, OI_KEYS));
+  }
   app.appendChild(section(label + " 总览", null, overview));
 
   if (data.spot) {

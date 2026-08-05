@@ -27,6 +27,7 @@ from fetch_data import (  # noqa: E402
     f,
     top,
     pct,
+    oi_stats,
     BINANCE_FAPI_HOSTS,
 )
 
@@ -91,6 +92,7 @@ def fetch_binance_futures():
         "equity_ranking": top(equity, "volume_usd"),
         "commodity_ranking": top(commodity, "volume_usd"),
         "top100_oi": top(fut_rows, "oi_usd", 100),
+        **oi_stats(fut_rows),
     }
 
 
