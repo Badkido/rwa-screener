@@ -48,6 +48,16 @@ cp scripts/fetch_data.py scripts/local_binance_futures_proxy.py \
 launchctl load -w ~/Library/LaunchAgents/com.rwascreener.binanceproxy.plist
 ```
 
+`~/Library/Application Support/` 下是一份拷贝，不是仓库里的原文件，`git pull` 不会自动更新它。每次改了
+`fetch_data.py` 或 `local_binance_futures_proxy.py` 之后，都要重新拷贝 + 重启服务，不然按钮返回的还是旧逻辑
+的数据（新加的字段会缺失）：
+
+```bash
+cp scripts/fetch_data.py scripts/local_binance_futures_proxy.py \
+   ~/Library/Application\ Support/rwa-screener/scripts/
+launchctl kickstart -k gui/$(id -u)/com.rwascreener.binanceproxy
+```
+
 卸载：
 
 ```bash
