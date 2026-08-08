@@ -32,9 +32,13 @@ def http_json(url, method="GET", body=None, timeout=TIMEOUT):
                 return json.loads(resp.read().decode())
         except urllib.error.HTTPError as e:
             last_err = e
-            if 400 <= e.code < 500:
-                break  # client error (incl. 451 geo-block) won't fix itself on retry
-            time.sleep(0.5 * (attempt + 1))
+            if e.code in (429, 418):
+                # rate-limited — worth a backoff-and-retry, unlike a permanent block
+                time.sleep(1.5 * (attempt + 1))
+            elif 400 <= e.code < 500:
+                break  # other client errors (incl. 451 geo-block) won't fix themselves on retry
+            else:
+                time.sleep(0.5 * (attempt + 1))
         except Exception as e:  # noqa: BLE001
             last_err = e
             time.sleep(0.5 * (attempt + 1))

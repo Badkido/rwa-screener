@@ -16,7 +16,7 @@ import json
 import sys
 import urllib.error
 import urllib.request
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
 from fetch_data import (  # noqa: E402
@@ -121,6 +121,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         except Exception as e:  # noqa: BLE001
+            print(f"fetch_binance_futures failed: {e}", file=sys.stderr)
             body = json.dumps({"error": str(e)}).encode()
             self.send_response(502)
             self._cors()
@@ -135,4 +136,4 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     print(f"Listening on http://localhost:{PORT} — open the dashboard and click 刷新.")
     print("Ctrl+C to stop.")
-    HTTPServer(("localhost", PORT), Handler).serve_forever()
+    ThreadingHTTPServer(("localhost", PORT), Handler).serve_forever()
