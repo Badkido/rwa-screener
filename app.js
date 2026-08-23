@@ -96,10 +96,33 @@ function binanceFuturesRefreshTile() {
   return div;
 }
 
+let HISTORY = [];
+
 async function load() {
   const res = await fetch("data/data.json", { cache: "no-store" });
   if (!res.ok) throw new Error("data.json fetch failed: " + res.status);
   DATA = await res.json();
+
+  try {
+    const histRes = await fetch("data/history.jsonl", { cache: "no-store" });
+    if (histRes.ok) {
+      const text = await histRes.text();
+      HISTORY = text
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          try {
+            return JSON.parse(line);
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean);
+    }
+  } catch (err) {
+    console.warn("history.jsonl load failed", err);
+  }
+
   render();
 }
 
@@ -204,6 +227,219 @@ function section(title, note, contentNode) {
   return sec;
 }
 
+// ---------------------------------------------------------------------------
+// Trend charts (daily bars, built client-side from data/history.jsonl)
+// ---------------------------------------------------------------------------
+const RANGE_PRESETS = [
+  { label: "7天", days: 7 },
+  { label: "30天", days: 30 },
+  { label: "全部", days: null },
+];
+
+function dailyBuckets(ctxKey, sectionKey) {
+  const byDate = new Map();
+  for (const snap of HISTORY) {
+    const date = snap.t.slice(0, 10);
+    const src = ctxKey === "agg" ? snap.agg : snap[ctxKey];
+    const sec = src && src[sectionKey];
+    if (!sec) continue;
+    byDate.set(date, sec); // chronological order -> last snapshot of the day wins
+  }
+  return Array.from(byDate.entries())
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([date, sec]) => ({ date, sec }));
+}
+
+function niceMax(v) {
+  if (v <= 0) return 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / mag;
+  const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+  return step * mag;
+}
+
+function trendBarChart(buckets, seriesDef) {
+  const barW = 7;
+  const barGap = 2;
+  const groupGap = 12;
+  const groupW = seriesDef.length * barW + (seriesDef.length - 1) * barGap;
+  const step = groupW + groupGap;
+  const leftPad = 52;
+  const rightPad = 10;
+  const topPad = 10;
+  const chartH = 150;
+  const bottomPad = 24;
+  const width = leftPad + rightPad + Math.max(buckets.length, 1) * step;
+  const height = topPad + chartH + bottomPad;
+
+  const maxVal = niceMax(
+    Math.max(1, ...buckets.flatMap((b) => seriesDef.map((s) => b.sec[s.key] || 0)))
+  );
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => maxVal * f);
+  const yToPx = (v) => topPad + chartH - (v / maxVal) * chartH;
+
+  const labelEvery = Math.max(1, Math.ceil(buckets.length / 8));
+
+  let svg = `<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" class="trend-svg">`;
+
+  // gridlines + y labels
+  yTicks.forEach((v) => {
+    const y = yToPx(v);
+    svg += `<line x1="${leftPad}" y1="${y}" x2="${width - rightPad}" y2="${y}" class="trend-gridline" />`;
+    svg += `<text x="${leftPad - 8}" y="${y + 3}" class="trend-ylabel" text-anchor="end">${fmtUsd(v)}</text>`;
+  });
+
+  buckets.forEach((b, i) => {
+    const gx = leftPad + i * step;
+    seriesDef.forEach((s, si) => {
+      const val = b.sec[s.key] || 0;
+      const y = yToPx(val);
+      const h = topPad + chartH - y;
+      const x = gx + si * (barW + barGap);
+      svg += `<rect x="${x}" y="${y}" width="${barW}" height="${Math.max(h, 0)}" rx="2" class="trend-bar" style="fill:${s.color}" />`;
+    });
+    if (i % labelEvery === 0 || i === buckets.length - 1) {
+      const label = b.date.slice(5).replace("-", "/");
+      svg += `<text x="${gx + groupW / 2}" y="${height - 6}" class="trend-xlabel" text-anchor="middle">${label}</text>`;
+    }
+    // invisible hit target covering the whole day-group column
+    svg += `<rect x="${gx - groupGap / 2}" y="${topPad}" width="${step}" height="${chartH}" class="trend-hit" tabindex="0" data-i="${i}" />`;
+  });
+
+  svg += `</svg>`;
+
+  const wrap = document.createElement("div");
+  wrap.className = "trend-chart-wrap";
+  wrap.innerHTML = svg;
+
+  const tooltip = document.createElement("div");
+  tooltip.className = "trend-tooltip";
+  tooltip.hidden = true;
+  wrap.appendChild(tooltip);
+
+  const showTip = (i, clientX, clientY) => {
+    const b = buckets[i];
+    if (!b) return;
+    const rect = wrap.getBoundingClientRect();
+    tooltip.innerHTML = "";
+    const dateEl = document.createElement("div");
+    dateEl.className = "trend-tooltip-date";
+    dateEl.textContent = b.date;
+    tooltip.appendChild(dateEl);
+    seriesDef.forEach((s) => {
+      const row = document.createElement("div");
+      row.className = "trend-tooltip-row";
+      const key = document.createElement("span");
+      key.className = "trend-tooltip-key";
+      key.style.background = s.color;
+      const name = document.createElement("span");
+      name.textContent = s.label;
+      const val = document.createElement("b");
+      val.textContent = fmtUsd(b.sec[s.key] || 0);
+      row.append(key, name, val);
+      tooltip.appendChild(row);
+    });
+    tooltip.hidden = false;
+    tooltip.style.left = Math.min(clientX - rect.left + 12, rect.width - 160) + "px";
+    tooltip.style.top = clientY - rect.top - 40 + "px";
+  };
+  const hideTip = () => {
+    tooltip.hidden = true;
+  };
+
+  wrap.querySelectorAll(".trend-hit").forEach((hit) => {
+    const i = Number(hit.dataset.i);
+    hit.addEventListener("mousemove", (e) => showTip(i, e.clientX, e.clientY));
+    hit.addEventListener("mouseleave", hideTip);
+    hit.addEventListener("focus", (e) => {
+      const r = hit.getBoundingClientRect();
+      showTip(i, r.left + r.width / 2, r.top);
+    });
+    hit.addEventListener("blur", hideTip);
+  });
+
+  return wrap;
+}
+
+function trendLegend(seriesDef) {
+  const div = document.createElement("div");
+  div.className = "trend-legend";
+  seriesDef.forEach((s) => {
+    const item = document.createElement("span");
+    item.className = "trend-legend-item";
+    item.innerHTML = `<i class="trend-legend-swatch" style="background:${s.color}"></i>`;
+    item.append(s.label);
+    div.appendChild(item);
+  });
+  return div;
+}
+
+const VOLUME_SERIES = [
+  { key: "total_volume_usd", label: "Total", color: "var(--text-muted)" },
+  { key: "equity_volume_usd", label: "Equity", color: "var(--series-equity)" },
+  { key: "commodity_volume_usd", label: "Commodity", color: "var(--series-commodity)" },
+];
+const OI_SERIES = [
+  { key: "total_oi_usd", label: "Total OI", color: "var(--text-muted)" },
+  { key: "equity_oi_usd", label: "Equity OI", color: "var(--series-equity)" },
+  { key: "commodity_oi_usd", label: "Commodity OI", color: "var(--series-commodity)" },
+];
+
+function trendCard(title, ctxKey, sectionKey, seriesDef, days) {
+  const buckets = dailyBuckets(ctxKey, sectionKey).slice(days ? -days : 0);
+  const card = document.createElement("div");
+  card.className = "trend-card";
+  const h = document.createElement("div");
+  h.className = "trend-card-title";
+  h.textContent = title;
+  card.appendChild(h);
+  if (!buckets.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-note";
+    empty.textContent = "暂无历史数据(数据从这次更新开始累积)";
+    card.appendChild(empty);
+    return card;
+  }
+  card.appendChild(trendLegend(seriesDef));
+  card.appendChild(trendBarChart(buckets, seriesDef));
+  return card;
+}
+
+function trendSection(ctxKey, label) {
+  const wrap = document.createElement("div");
+  const rangeRow = document.createElement("div");
+  rangeRow.className = "range-row";
+  let currentDays = 7;
+  const grid = document.createElement("div");
+  grid.className = "trend-grid";
+
+  const renderCards = () => {
+    grid.innerHTML = "";
+    grid.appendChild(trendCard("现货成交量", ctxKey, "spot", VOLUME_SERIES, currentDays));
+    grid.appendChild(trendCard("合约成交量", ctxKey, "futures", VOLUME_SERIES, currentDays));
+    grid.appendChild(trendCard("合约 Open Interest", ctxKey, "futures", OI_SERIES, currentDays));
+  };
+
+  RANGE_PRESETS.forEach((preset, i) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "range-btn" + (i === 0 ? " active" : "");
+    btn.textContent = preset.label;
+    btn.addEventListener("click", () => {
+      rangeRow.querySelectorAll(".range-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentDays = preset.days;
+      renderCards();
+    });
+    rangeRow.appendChild(btn);
+  });
+
+  wrap.appendChild(rangeRow);
+  wrap.appendChild(grid);
+  renderCards();
+  return section(label + " 趋势", "按天汇总(取当日最后一条数据)", wrap);
+}
+
 function render() {
   const app = document.getElementById("app");
   app.innerHTML = "";
@@ -235,6 +471,7 @@ function renderAll(app) {
   app.appendChild(
     section("总览", "四家交易所合计，仅统计 USDT 计价交易对", overview)
   );
+  app.appendChild(trendSection("agg", "总览"));
 
   const perExGrid = document.createElement("div");
   perExGrid.className = "stat-grid";
@@ -303,6 +540,7 @@ function renderExchange(app, ex) {
     overview.appendChild(statTile("合约 Open Interest", data.futures, OI_KEYS));
   }
   app.appendChild(section(label + " 总览", null, overview));
+  app.appendChild(trendSection(ex, label));
 
   if (data.spot) {
     const twoCol = document.createElement("div");

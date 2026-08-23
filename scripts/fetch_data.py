@@ -626,6 +626,32 @@ def build_aggregate(exchanges, section):
     return result
 
 
+def compact_section(sec):
+    if not sec:
+        return None
+    keys = ["total_volume_usd", "equity_volume_usd", "commodity_volume_usd"]
+    if "total_oi_usd" in sec:
+        keys += ["total_oi_usd", "equity_oi_usd", "commodity_oi_usd"]
+    return {k: round(sec[k], 2) for k in keys if k in sec}
+
+
+def append_history(output):
+    snapshot = {
+        "t": output["generated_at"],
+        "agg": {
+            "spot": compact_section(output["aggregate"]["spot"]),
+            "futures": compact_section(output["aggregate"]["futures"]),
+        },
+    }
+    for ex, sec in output["exchanges"].items():
+        snapshot[ex] = {
+            "spot": compact_section(sec.get("spot")),
+            "futures": compact_section(sec.get("futures")),
+        }
+    with open("data/history.jsonl", "a") as fp:
+        fp.write(json.dumps(snapshot, separators=(",", ":")) + "\n")
+
+
 def main():
     exchanges = {}
     errors = []
@@ -653,6 +679,7 @@ def main():
 
     with open("data/data.json", "w") as fp:
         json.dump(output, fp, separators=(",", ":"))
+    append_history(output)
 
     print(f"Wrote data/data.json ({'OK' if not errors else 'with errors: ' + str(errors)})")
 
