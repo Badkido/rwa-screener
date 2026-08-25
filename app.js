@@ -233,7 +233,6 @@ function section(title, note, contentNode) {
 const RANGE_PRESETS = [
   { label: "7天", days: 7 },
   { label: "30天", days: 30 },
-  { label: "全部", days: null },
 ];
 
 function dailyBuckets(ctxKey, sectionKey) {
