@@ -345,14 +345,27 @@ tbody tr:hover td { background: var(--chip-bg); }
   font-size: 9px;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
-.trend-bar { transition: opacity 0.1s; }
 .trend-hit {
   fill: transparent;
-  cursor: pointer;
+  cursor: crosshair;
 }
-.trend-hit:hover, .trend-hit:focus {
-  fill: var(--chip-bg);
-  outline: none;
+.trend-hit:focus { outline: none; }
+.trend-crosshair {
+  stroke: var(--baseline);
+  stroke-width: 1;
+  opacity: 0;
+  pointer-events: none;
+}
+.trend-hoverdot {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.trend-subchart + .trend-subchart { margin-top: 4px; }
+.trend-sublabel {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
 }
 
 .trend-tooltip {

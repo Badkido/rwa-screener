@@ -257,53 +257,61 @@ function niceMax(v) {
   return step * mag;
 }
 
-function trendBarChart(buckets, seriesDef) {
-  const barW = 7;
-  const barGap = 2;
-  const groupGap = 12;
-  const groupW = seriesDef.length * barW + (seriesDef.length - 1) * barGap;
-  const step = groupW + groupGap;
+function trendLineChart(buckets, seriesDef, opts = {}) {
+  const stepX = 40;
   const leftPad = 52;
   const rightPad = 10;
   const topPad = 10;
-  const chartH = 150;
+  const chartH = opts.height || 120;
   const bottomPad = 24;
-  const width = leftPad + rightPad + Math.max(buckets.length, 1) * step;
+  const n = buckets.length;
+  const width = leftPad + rightPad + Math.max(n - 1, 0) * stepX + 16;
   const height = topPad + chartH + bottomPad;
 
   const maxVal = niceMax(
     Math.max(1, ...buckets.flatMap((b) => seriesDef.map((s) => b.sec[s.key] || 0)))
   );
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => maxVal * f);
+  const yTicks = opts.height && opts.height < 90 ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1];
   const yToPx = (v) => topPad + chartH - (v / maxVal) * chartH;
+  const xOf = (i) => leftPad + i * stepX + 8;
 
-  const labelEvery = Math.max(1, Math.ceil(buckets.length / 8));
+  const labelEvery = Math.max(1, Math.ceil(n / 8));
 
   let svg = `<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" class="trend-svg">`;
 
-  // gridlines + y labels
-  yTicks.forEach((v) => {
+  yTicks.forEach((f) => {
+    const v = maxVal * f;
     const y = yToPx(v);
     svg += `<line x1="${leftPad}" y1="${y}" x2="${width - rightPad}" y2="${y}" class="trend-gridline" />`;
     svg += `<text x="${leftPad - 8}" y="${y + 3}" class="trend-ylabel" text-anchor="end">${fmtUsd(v)}</text>`;
   });
 
-  buckets.forEach((b, i) => {
-    const gx = leftPad + i * step;
-    seriesDef.forEach((s, si) => {
-      const val = b.sec[s.key] || 0;
-      const y = yToPx(val);
-      const h = topPad + chartH - y;
-      const x = gx + si * (barW + barGap);
-      svg += `<rect x="${x}" y="${y}" width="${barW}" height="${Math.max(h, 0)}" rx="2" class="trend-bar" style="fill:${s.color}" />`;
-    });
-    if (i % labelEvery === 0 || i === buckets.length - 1) {
-      const label = b.date.slice(5).replace("-", "/");
-      svg += `<text x="${gx + groupW / 2}" y="${height - 6}" class="trend-xlabel" text-anchor="middle">${label}</text>`;
-    }
-    // invisible hit target covering the whole day-group column
-    svg += `<rect x="${gx - groupGap / 2}" y="${topPad}" width="${step}" height="${chartH}" class="trend-hit" tabindex="0" data-i="${i}" />`;
+  seriesDef.forEach((s) => {
+    if (n < 2) return;
+    const d = buckets.map((b, i) => `${i === 0 ? "M" : "L"}${xOf(i)},${yToPx(b.sec[s.key] || 0)}`).join(" ");
+    svg += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />`;
   });
+  // end + point markers (always shown so a single-point series is still visible)
+  seriesDef.forEach((s) => {
+    buckets.forEach((b, i) => {
+      if (n >= 2 && i !== n - 1) return; // for multi-point lines, only mark the end
+      svg += `<circle cx="${xOf(i)}" cy="${yToPx(b.sec[s.key] || 0)}" r="4" fill="${s.color}" stroke="var(--surface-1)" stroke-width="2" />`;
+    });
+  });
+
+  buckets.forEach((b, i) => {
+    if (i % labelEvery === 0 || i === n - 1) {
+      const label = b.date.slice(5).replace("-", "/");
+      svg += `<text x="${xOf(i)}" y="${height - 6}" class="trend-xlabel" text-anchor="middle">${label}</text>`;
+    }
+  });
+
+  // crosshair (hidden until hover)
+  svg += `<line x1="0" y1="${topPad}" x2="0" y2="${topPad + chartH}" class="trend-crosshair" />`;
+  seriesDef.forEach((s, si) => {
+    svg += `<circle r="5" fill="${s.color}" stroke="var(--surface-1)" stroke-width="2" class="trend-hoverdot" data-si="${si}" />`;
+  });
+  svg += `<rect x="${leftPad}" y="${topPad}" width="${width - leftPad - rightPad}" height="${chartH}" class="trend-hit" tabindex="0" />`;
 
   svg += `</svg>`;
 
@@ -316,10 +324,21 @@ function trendBarChart(buckets, seriesDef) {
   tooltip.hidden = true;
   wrap.appendChild(tooltip);
 
+  const crosshair = wrap.querySelector(".trend-crosshair");
+  const hoverDots = wrap.querySelectorAll(".trend-hoverdot");
+
   const showTip = (i, clientX, clientY) => {
     const b = buckets[i];
     if (!b) return;
-    const rect = wrap.getBoundingClientRect();
+    const x = xOf(i);
+    crosshair.setAttribute("x1", x);
+    crosshair.setAttribute("x2", x);
+    crosshair.style.opacity = 1;
+    seriesDef.forEach((s, si) => {
+      hoverDots[si].setAttribute("cx", x);
+      hoverDots[si].setAttribute("cy", yToPx(b.sec[s.key] || 0));
+      hoverDots[si].style.opacity = 1;
+    });
     tooltip.innerHTML = "";
     const dateEl = document.createElement("div");
     dateEl.className = "trend-tooltip-date";
@@ -339,23 +358,30 @@ function trendBarChart(buckets, seriesDef) {
       tooltip.appendChild(row);
     });
     tooltip.hidden = false;
-    tooltip.style.left = Math.min(clientX - rect.left + 12, rect.width - 160) + "px";
-    tooltip.style.top = clientY - rect.top - 40 + "px";
+    // tooltip is a child of the scrollable wrap, so it scrolls with the chart —
+    // position it in the same SVG-unit-as-px coordinate space, not the viewport
+    tooltip.style.left = Math.min(x + 12, width - 160) + "px";
+    tooltip.style.top = Math.max(topPad, yToPx(maxVal) - 4) + "px";
   };
   const hideTip = () => {
     tooltip.hidden = true;
+    crosshair.style.opacity = 0;
+    hoverDots.forEach((d) => (d.style.opacity = 0));
   };
 
-  wrap.querySelectorAll(".trend-hit").forEach((hit) => {
-    const i = Number(hit.dataset.i);
-    hit.addEventListener("mousemove", (e) => showTip(i, e.clientX, e.clientY));
-    hit.addEventListener("mouseleave", hideTip);
-    hit.addEventListener("focus", (e) => {
-      const r = hit.getBoundingClientRect();
-      showTip(i, r.left + r.width / 2, r.top);
+  const hit = wrap.querySelector(".trend-hit");
+  if (hit) {
+    hit.addEventListener("mousemove", (e) => {
+      const rect = hit.getBoundingClientRect();
+      const localX = leftPad + (e.clientX - rect.left);
+      let i = Math.round((localX - leftPad - 8) / stepX);
+      i = Math.max(0, Math.min(n - 1, i));
+      showTip(i, e.clientX, e.clientY);
     });
+    hit.addEventListener("mouseleave", hideTip);
+    hit.addEventListener("focus", () => showTip(n - 1, 0, 0));
     hit.addEventListener("blur", hideTip);
-  });
+  }
 
   return wrap;
 }
@@ -374,12 +400,12 @@ function trendLegend(seriesDef) {
 }
 
 const VOLUME_SERIES = [
-  { key: "total_volume_usd", label: "Total", color: "var(--text-muted)" },
+  { key: "total_volume_usd", label: "Total", color: "var(--text-muted)", total: true },
   { key: "equity_volume_usd", label: "Equity", color: "var(--series-equity)" },
   { key: "commodity_volume_usd", label: "Commodity", color: "var(--series-commodity)" },
 ];
 const OI_SERIES = [
-  { key: "total_oi_usd", label: "Total OI", color: "var(--text-muted)" },
+  { key: "total_oi_usd", label: "Total OI", color: "var(--text-muted)", total: true },
   { key: "equity_oi_usd", label: "Equity OI", color: "var(--series-equity)" },
   { key: "commodity_oi_usd", label: "Commodity OI", color: "var(--series-commodity)" },
 ];
@@ -399,8 +425,26 @@ function trendCard(title, ctxKey, sectionKey, seriesDef, days) {
     card.appendChild(empty);
     return card;
   }
-  card.appendChild(trendLegend(seriesDef));
-  card.appendChild(trendBarChart(buckets, seriesDef));
+  // Total lives on a much bigger scale than Equity/Commodity — sharing one axis
+  // makes the smaller two invisible, so they get their own chart/scale.
+  const totalSeries = seriesDef.filter((s) => s.total);
+  const partSeries = seriesDef.filter((s) => !s.total);
+
+  const totalWrap = document.createElement("div");
+  totalWrap.className = "trend-subchart";
+  const totalLabel = document.createElement("div");
+  totalLabel.className = "trend-sublabel";
+  totalLabel.textContent = totalSeries[0].label;
+  totalWrap.appendChild(totalLabel);
+  totalWrap.appendChild(trendLineChart(buckets, totalSeries, { height: 64 }));
+  card.appendChild(totalWrap);
+
+  const partWrap = document.createElement("div");
+  partWrap.className = "trend-subchart";
+  partWrap.appendChild(trendLegend(partSeries));
+  partWrap.appendChild(trendLineChart(buckets, partSeries, { height: 110 }));
+  card.appendChild(partWrap);
+
   return card;
 }
 
